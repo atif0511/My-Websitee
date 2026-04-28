@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Docker Deploy to EC2
 
 on:
   push:
@@ -10,12 +10,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Deploy via SSH
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build -t my-website .
+
+    - name: Save image
+      run: docker save my-website > image.tar
+
+    - name: Copy image to EC2
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.SERVER_IP }}
+        username: ec2-user
+        key: ${{ secrets.SSH_KEY }}
+        source: "image.tar"
+        target: "/home/ec2-user"
+
+    - name: Deploy on EC2
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.SERVER_IP }}
         username: ec2-user
         key: ${{ secrets.SSH_KEY }}
         script: |
-          cd /usr/share/nginx/html
-          git pull
+          docker stop my-container || true
+          docker rm my-container || true
+          docker load < image.tar
+          docker run -d -p 80:80 --name my-container my-website
